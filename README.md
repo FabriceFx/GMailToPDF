@@ -1,8 +1,7 @@
 # Gmail vers PDF et Drive (Automatisé)
 
-**Auteur :** Fabrice Faucheux  
-**Version :** 1.0.0  
-**Stack :** Google Apps Script (V8 Runtime)
+![Runtime](https://img.shields.io/badge/Google%20Apps%20Script-V8-green)
+![Author](https://img.shields.io/badge/Auteur-Fabrice%20Faucheux-orange)
 
 ## 📋 Description
 
