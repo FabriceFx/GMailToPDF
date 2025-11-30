@@ -7,7 +7,7 @@
 
 Ce projet permet d'automatiser l'archivage d'e-mails Gmail critiques (factures, contrats, administratif) vers Google Drive. Le script surveille des libellés spécifiques, convertit le contenu des e-mails en fichiers PDF propres, sauvegarde les pièces jointes et archive automatiquement le courrier traité.
 
-## ✨ Fonctionnalités Clés
+## ✨ Fonctionnalités clés
 
 * **Conversion PDF Intelligente :** Transforme le corps de l'e-mail en PDF incluant les images in-line (CID).
 * **Gestion des Pièces Jointes :** Sauvegarde automatique des fichiers joints dans des sous-dossiers structurés.
@@ -27,7 +27,7 @@ Ouvrez le fichier `Code.js` et modifiez l'objet `CONFIG` au début du script :
 | `sousLibelleTraite` | `String` | Nom du sous-libellé ajouté après traitement. |
 | `modeSimulation` | `Boolean` | `true` pour tester le script sans écrire de fichiers. |
 
-## 🚀 Installation Manuelle
+## 🚀 Installation manuelle
 
 1.  Accédez à [script.google.com](https://script.google.com/home).
 2.  Créez un **Nouveau projet**.
@@ -42,7 +42,3 @@ Pour activer l'exécution automatique toutes les 5 minutes :
 1.  Sélectionnez la fonction `creerDeclencheur5Minutes` dans la barre d'outils.
 2.  Cliquez sur **Exécuter**.
 3.  Vérifiez dans le menu de gauche **Déclencheurs** (icône réveil) que le trigger est bien présent.
-
-## 📝 Licence
-
-Distribué sous licence MIT. Copyright (c) 2025 Fabrice Faucheux.
