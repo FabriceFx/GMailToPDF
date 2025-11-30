@@ -1,87 +1,10 @@
-/********************************************************************************************
- * NOM DU SCRIPT : Gmail vers PDF et Drive par Libellé
- * AUTEUR : Fabrice Faucheux
- * VERSION : 1.0
- * DATE : 4/10/2025
- *
- * DESCRIPTION GÉNÉRALE :
- * ------------------------------------------------------------------------------------------
- * Ce script Google Apps Script automatise l’exportation d’e-mails Gmail portant un libellé
- * spécifique (ex. "PDF") vers Google Drive sous forme de fichiers PDF.
- *
- * Pour chaque message trouvé :
- *   - Le contenu de l’e-mail est converti en PDF (avec entête, corps, images, etc.)
- *   - Le PDF est enregistré dans un dossier Drive portant le nom du libellé
- *   - Les pièces jointes sont également sauvegardées (optionnel)
- *   - L’e-mail est marqué comme traité (ajout d’un sous-libellé “Traité”) et archivé
- *   - Le script évite les doublons grâce à un stockage interne des identifiants déjà traités
- *
- * L’objectif est de faciliter la conservation et la classification automatique
- * des e-mails importants (factures, contrats, etc.) sous forme de documents PDF.
- *
- * ------------------------------------------------------------------------------------------
- * PRINCIPALES FONCTIONNALITÉS :
- *   ✅ Conversion automatique des e-mails en PDF
- *   ✅ Sauvegarde des pièces jointes dans des sous-dossiers dédiés
- *   ✅ Gestion de plusieurs libellés simultanément
- *   ✅ Archivage et marquage automatique des e-mails traités
- *   ✅ Aucune duplication : chaque message n’est traité qu’une seule fois
- *   ✅ Mode “simulation” pour tester sans rien modifier
- *
- * ------------------------------------------------------------------------------------------
- * DÉPENDANCES :
- *   - Nécessite l’accès aux services :
- *       • GmailApp      → lecture et modification des e-mails
- *       • DriveApp      → création et écriture de fichiers PDF
- *       • PropertiesService → stockage des identifiants traités
- *   - Aucune bibliothèque externe requise
- *
- * ------------------------------------------------------------------------------------------
- * CONFIGURATION PRINCIPALE (objet CONFIG) :
- *   • libellesATraiter : liste des libellés Gmail à surveiller
- *   • idDossierRacine : ID du dossier Drive parent (null = racine)
- *   • sauvegarderPiecesJointes : true/false pour inclure les PJ
- *   • sousLibelleTraite : sous-libellé ajouté après traitement (ex: "Traité")
- *   • archiverConversation : archive automatiquement la conversation
- *   • seulementNonLus : si true, ne traite que les e-mails non lus
- *   • joursDeRecherche : limite de recherche dans Gmail (performances)
- *   • modeSimulation : si true, exécute sans écrire ni archiver
- *
- * ------------------------------------------------------------------------------------------
- * AUTOMATISATION :
- *   Une fonction “creerDeclencheur5Minutes()” permet d’exécuter
- *   automatiquement le script toutes les 5 minutes via un déclencheur Apps Script.
- *
- * ------------------------------------------------------------------------------------------
- * CONSEILS :
- *   - Tester d’abord en modeSimulation: true
- *   - Vérifier les autorisations Gmail et Drive lors de la première exécution
- *   - Adapter les noms de libellés et les paramètres selon votre usage
- *
- * ------------------------------------------------------------------------------------------
-/********************************************************************************************
- * LICENCE : MIT avec attribution obligatoire
- *
- * Copyright (c) 2025 Fabrice Faucheux - L'atelier informatique
- *
- * Permission est accordée, gratuitement, à toute personne obtenant une copie de ce script
- * et des fichiers de documentation associés (le "Logiciel"), de l'utiliser, le copier,
- * le modifier, le fusionner, le publier, le distribuer, le sous-licencier et/ou de vendre
- * des copies du Logiciel, sous réserve des conditions suivantes :
- *
- * ➤ Le présent avis de copyright et la mention suivante doivent apparaître clairement
- *   dans toute copie ou utilisation du Logiciel :
- *     "Basé sur le script 'Gmail vers PDF et Drive par Libellé' développé par Fabrice Faucheux"
- *
- * LE LOGICIEL EST FOURNI "EN L'ÉTAT", SANS GARANTIE D'AUCUNE SORTE,
- * EXPRESSE OU IMPLICITE, Y COMPRIS MAIS SANS S'Y LIMITER LES GARANTIES
- * DE QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE PARTICULIER ET D'ABSENCE DE CONTREFAÇON.
- * EN AUCUN CAS LES AUTEURS OU TITULAIRES DU COPYRIGHT NE POURRONT ÊTRE TENUS
- * POUR RESPONSABLES DE TOUT DOMMAGE OU AUTRE RÉCLAMATION DÉCOULANT DE L'UTILISATION
- * OU DE LA DISTRIBUTION DU LOGICIEL.
- ********************************************************************************************/
+/**
+ * @fileoverview Script d'archivage automatisé Gmail vers Drive (PDF).
+ * @author Fabrice Faucheux
+ * @version 1.0.0
+ */
 
-
+// CONFIGURATION UTILISATEUR
 const CONFIG = {
   libellesATraiter: ['PDF'],           // Libellés Gmail à surveiller
   idDossierRacine: null,               // ID du dossier Drive parent (null = Racine de Drive)
@@ -94,73 +17,106 @@ const CONFIG = {
 };
 
 /**
- * Point d’entrée principal : traite tous les libellés configurés
+ * Point d’entrée principal : traite tous les libellés configurés.
+ * @public
  */
 function executer() {
-  for (const nomLibelle of CONFIG.libellesATraiter) {
-    traiterLibelle(nomLibelle);
+  console.time('ExecutionScript');
+  try {
+    CONFIG.libellesATraiter.forEach(nomLibelle => {
+      traiterLibelle_(nomLibelle);
+    });
+  } catch (e) {
+    console.error(`Erreur critique lors de l'exécution : ${e.stack}`);
   }
+  console.timeEnd('ExecutionScript');
 }
 
 /**
- * Crée un déclencheur automatique toutes les 5 minutes
+ * Crée un déclencheur automatique (Time-driven trigger).
+ * Exécute la fonction 'executer' toutes les 5 minutes.
+ * @public
  */
 function creerDeclencheur5Minutes() {
-  ScriptApp.newTrigger('executer').timeBased().everyMinutes(5).create();
-  console.log('Déclencheur créé : toutes les 5 minutes.');
+  const triggers = ScriptApp.getProjectTriggers();
+  const existe = triggers.some(t => t.getHandlerFunction() === 'executer');
+  
+  if (!existe) {
+    ScriptApp.newTrigger('executer').timeBased().everyMinutes(5).create();
+    console.log('Déclencheur créé : exécution toutes les 5 minutes.');
+  } else {
+    console.warn('Le déclencheur existe déjà.');
+  }
 }
 
 /* ================================================================
-   Traitement principal
+   LOGIQUE MÉTIER (PRIVÉE)
    ================================================================ */
 
-function traiterLibelle(nomLibelle) {
+/**
+ * Traite un libellé spécifique pour l'export PDF.
+ * @param {string} nomLibelle - Le nom du libellé Gmail.
+ * @private
+ */
+function traiterLibelle_(nomLibelle) {
   const libelle = GmailApp.getUserLabelByName(nomLibelle) || GmailApp.createLabel(nomLibelle);
-  const libelleTraite = (CONFIG.sousLibelleTraite && CONFIG.sousLibelleTraite.trim())
-    ? GmailApp.createLabel(`${nomLibelle}/${CONFIG.sousLibelleTraite}`)
+  
+  // Création conditionnelle du sous-libellé "Traité"
+  const libelleTraite = (CONFIG.sousLibelleTraite?.trim())
+    ? (GmailApp.getUserLabelByName(`${nomLibelle}/${CONFIG.sousLibelleTraite}`) || GmailApp.createLabel(`${nomLibelle}/${CONFIG.sousLibelleTraite}`))
     : null;
 
   const stockage = PropertiesService.getUserProperties();
   const cleStockage = `traite:${nomLibelle}`;
 
-  const depuis = formaterDate(ajouterJours(new Date(), -CONFIG.joursDeRecherche));
-  let requete = `label:${mettreEntreGuillemets(nomLibelle)} after:${depuis}`;
+  // Construction de la requête de recherche optimisée
+  const dateDebut = formaterDate_(ajouterJours_(new Date(), -CONFIG.joursDeRecherche));
+  let requete = `label:${mettreEntreGuillemets_(nomLibelle)} after:${dateDebut}`;
   if (CONFIG.seulementNonLus) requete += ' is:unread';
 
-  console.log(`Recherche Gmail : ${requete}`);
+  console.log(`🔍 Recherche pour "${nomLibelle}" : ${requete}`);
 
-  const fils = GmailApp.search(requete) || [];
-  console.log(`Conversations trouvées : ${fils.length}`);
+  const fils = GmailApp.search(requete);
+  if (fils.length === 0) {
+    console.log('Aucune conversation correspondante trouvée.');
+    return;
+  }
 
+  // Préparation du dossier de destination
   const dossierRacine = CONFIG.idDossierRacine ? DriveApp.getFolderById(CONFIG.idDossierRacine) : DriveApp.getRootFolder();
   const dossierLibelle = obtenirOuCreerSousDossier_(dossierRacine, nomLibelle);
 
-  for (const fil of fils) {
+  // Itération sur les conversations (Threads)
+  fils.forEach(fil => {
     const messages = fil.getMessages();
-    for (const message of messages) {
+    
+    // Itération sur les messages individuels
+    messages.forEach(message => {
       const idMessage = message.getId();
       const cleMessage = `${cleStockage}:${idMessage}`;
 
-      if (stockage.getProperty(cleMessage)) continue; // déjà traité
-      if (CONFIG.seulementNonLus && !message.isUnread()) continue;
+      // Vérification anti-doublon et critère "Non lu"
+      if (stockage.getProperty(cleMessage)) return; 
+      if (CONFIG.seulementNonLus && !message.isUnread()) return;
 
       try {
+        // 1. Conversion
         const pdf = convertirEmailEnPdf_(message);
         const sujetSain = nettoyerNomFichier_(message.getSubject() || 'Sans sujet');
         const dateTexte = Utilities.formatDate(message.getDate(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
         const nomBase = `${dateTexte} - ${sujetSain} - ${idMessage.substring(0, 8)}`;
 
         if (!CONFIG.modeSimulation) {
-          // Sauvegarder le PDF principal
+          // 2. Sauvegarde PDF
           const fichierPdf = dossierLibelle.createFile(pdf.setName(`${nomBase}.pdf`));
-          fichierPdf.setDescription(`Exporté depuis Gmail (libellé : ${nomLibelle})`);
+          fichierPdf.setDescription(`Exporté depuis Gmail (libellé : ${nomLibelle}) | ID: ${idMessage}`);
 
-          // Sauvegarde des pièces jointes (optionnel)
+          // 3. Sauvegarde PJ (Optionnel)
           if (CONFIG.sauvegarderPiecesJointes) {
             enregistrerPiecesJointes_(message, dossierLibelle, nomBase);
           }
 
-          // Marquer et archiver
+          // 4. Marquage et Archivage
           if (libelleTraite) {
             fil.addLabel(libelleTraite);
             fil.removeLabel(libelle);
@@ -169,21 +125,26 @@ function traiterLibelle(nomLibelle) {
             fil.moveToArchive();
           }
 
-          stockage.setProperty(cleMessage, '1'); // marquer comme traité
+          // 5. Enregistrement de l'état
+          stockage.setProperty(cleMessage, '1');
+          console.log(`✅ Succès : ${nomBase}`);
+        } else {
+          console.log(`[SIMULATION] Traitement de : ${nomBase}`);
         }
 
-        console.log(`OK : ${nomBase}`);
       } catch (erreur) {
-        console.error(`Erreur sur ${idMessage} : ${erreur && erreur.stack ? erreur.stack : erreur}`);
+        console.error(`❌ Erreur sur message ${idMessage} : ${erreur.stack}`);
       }
-    }
-  }
+    });
+  });
 }
 
-/* ================================================================
-   Conversion email → PDF
-   ================================================================ */
-
+/**
+ * Convertit un objet GmailMessage en Blob PDF.
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message 
+ * @return {GoogleAppsScript.Base.Blob}
+ * @private
+ */
 function convertirEmailEnPdf_(message) {
   let corpsHtml = message.getBody() || '';
   const sujet = message.getSubject() || 'Sans sujet';
@@ -192,20 +153,19 @@ function convertirEmailEnPdf_(message) {
   const copie = message.getCc();
   const date = Utilities.formatDate(message.getDate(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
 
+  // Styles CSS inline pour le rendu PDF
   const styleHtml = `
     <style>
-      body { font-family: Arial, sans-serif; font-size: 12pt; color: #111; }
-      .entete { font-size: 10pt; color: #555; margin-bottom: 12px; }
-      .entete div { margin: 2px 0; }
-      hr { border: 0; border-top: 1px solid #ddd; margin: 12px 0; }
+      body { font-family: 'Helvetica', sans-serif; font-size: 11pt; color: #333; line-height: 1.4; }
+      .entete { background-color: #f8f9fa; padding: 15px; border-bottom: 2px solid #e9ecef; margin-bottom: 20px; }
+      .entete div { margin-bottom: 5px; font-size: 0.95em; }
+      strong { color: #495057; }
       img { max-width: 100%; height: auto; }
-      table { border-collapse: collapse; }
-      table, td, th { border: 1px solid #ccc; }
-      td, th { padding: 4px 6px; }
+      hr { border: 0; border-top: 1px solid #ddd; margin: 20px 0; }
     </style>
   `;
 
-  // Convertir les images cid:xxx en data URI
+  // Gestion des images embarquées (CID)
   corpsHtml = insererImagesCid_(corpsHtml, message);
 
   const contenuComplet = `
@@ -215,37 +175,39 @@ function convertirEmailEnPdf_(message) {
       <div class="entete">
         <div><strong>Objet :</strong> ${echapperHtml_(sujet)}</div>
         <div><strong>De :</strong> ${echapperHtml_(expediteur)}</div>
-        <div><strong>À :</strong> ${echapperHtml_(destinataire || '')}</div>
+        <div><strong>À :</strong> ${echapperHtml_(destinataire)}</div>
         ${copie ? `<div><strong>Cc :</strong> ${echapperHtml_(copie)}</div>` : ''}
-        <div><strong>Date :</strong> ${echapperHtml_(date)}</div>
+        <div><strong>Date :</strong> ${date}</div>
       </div>
-      <hr/>
       ${corpsHtml}
     </body>
     </html>
   `;
 
-  const blobHtml = Utilities.newBlob(contenuComplet, 'text/html', sujet);
-  const pdf = blobHtml.getAs(MimeType.PDF);
-  return pdf;
+  return Utilities.newBlob(contenuComplet, 'text/html', sujet).getAs(MimeType.PDF);
 }
 
 /**
- * Remplace les images cid:xxx par des data URI base64 dans le HTML
+ * Remplace les références 'cid:' par des données Base64 pour l'inclusion dans le PDF.
+ * @param {string} html 
+ * @param {GoogleAppsScript.Gmail.GmailMessage} message 
+ * @return {string} HTML modifié
+ * @private
  */
 function insererImagesCid_(html, message) {
-  const pieces = message.getAttachments({includeInlineImages: true, includeAttachments: true}) || [];
+  const pieces = message.getAttachments({includeInlineImages: true, includeAttachments: false});
   const indexCid = {};
 
   pieces.forEach(piece => {
-    const enTetes = piece.getAllHeaders ? piece.getAllHeaders() : {};
-    const cid = (enTetes['Content-Id'] || enTetes['Content-ID'] || '').toString().replace(/[<>]/g, '').trim();
+    const headers = piece.getAllHeaders();
+    // Nettoyage de l'ID content (retrait des < >)
+    const cid = (headers['Content-Id'] || headers['Content-ID'] || '').toString().replace(/[<>]/g, '').trim();
     if (cid) indexCid[cid] = piece;
   });
 
-  return html.replace(/src=["']cid:([^"']+)["']/gi, (m, cid) => {
+  return html.replace(/src=["']cid:([^"']+)["']/gi, (match, cid) => {
     const att = indexCid[cid];
-    if (!att) return m;
+    if (!att) return match;
     const type = att.getContentType() || 'image/png';
     const base64 = Utilities.base64Encode(att.getBytes());
     return `src="data:${type};base64,${base64}"`;
@@ -253,61 +215,58 @@ function insererImagesCid_(html, message) {
 }
 
 /**
- * Sauvegarde les pièces jointes dans un sous-dossier Attachments/<nomBase>/
+ * Sauvegarde les pièces jointes classiques dans un sous-dossier dédié.
+ * @private
  */
 function enregistrerPiecesJointes_(message, dossierLibelle, nomBase) {
-  const pieces = message.getAttachments({includeInlineImages: false, includeAttachments: true}) || [];
-  if (!pieces.length) return;
+  const pieces = message.getAttachments({includeInlineImages: false, includeAttachments: true});
+  if (pieces.length === 0) return;
 
   const dossierAttachements = obtenirOuCreerSousDossier_(dossierLibelle, 'PiecesJointes');
   const dossierCourant = obtenirOuCreerSousDossier_(dossierAttachements, nomBase);
 
   pieces.forEach(piece => {
-    const nom = nettoyerNomFichier_(piece.getName() || 'piece');
     const blob = piece.copyBlob();
-    if (blob.getBytes().length === 0) return;
-    if (!CONFIG.modeSimulation) {
-      dossierCourant.createFile(blob.setName(nom));
+    // Sécurité pour éviter les fichiers vides corrompus
+    if (blob.getBytes().length > 0) {
+      const nomNettoye = nettoyerNomFichier_(piece.getName());
+      dossierCourant.createFile(blob.setName(nomNettoye));
     }
   });
 }
 
 /* ================================================================
-   Fonctions utilitaires
+   UTILITAIRES (HELPERS)
    ================================================================ */
 
-function obtenirOuCreerSousDossier_(parent, nom) {
+const obtenirOuCreerSousDossier_ = (parent, nom) => {
   const iterateur = parent.getFoldersByName(nom);
   return iterateur.hasNext() ? iterateur.next() : parent.createFolder(nom);
-}
+};
 
-function nettoyerNomFichier_(nom) {
-  return nom.replace(/[\\/:*?"<>|]+/g, ' ')
+const nettoyerNomFichier_ = (nom) => {
+  return nom.replace(/[\\/:*?"<>|]+/g, '_') // Remplacement caractères interdits
             .replace(/\s+/g, ' ')
             .trim()
-            .substring(0, 180);
-}
+            .substring(0, 150); // Limite Drive
+};
 
-function mettreEntreGuillemets(texte) {
-  return `"${texte.replace(/"/g, '\\"')}"`;
-}
+const mettreEntreGuillemets_ = (texte) => `"${texte.replace(/"/g, '\\"')}"`;
 
-function echapperHtml_(texte) {
-  return String(texte)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;');
-}
+const echapperHtml_ = (str) => {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+};
 
-function ajouterJours(date, nbJours) {
-  const copie = new Date(date);
-  copie.setDate(copie.getDate() + nbJours);
-  return copie;
-}
+const ajouterJours_ = (date, jours) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + jours);
+  return d;
+};
 
-function formaterDate(date) {
-  const an = date.getFullYear();
-  const mois = String(date.getMonth() + 1).padStart(2, '0');
-  const jour = String(date.getDate()).padStart(2, '0');
-  return `${an}/${mois}/${jour}`; // format compatible recherche Gmail
-}
+const formaterDate_ = (date) => {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy/MM/dd');
+};
